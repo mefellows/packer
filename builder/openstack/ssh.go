@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mitchellh/multistep"
-	"github.com/rackspace/gophercloud"
+	"github.com/mitchellh/gophercloud-fork-40444fb"
 	"time"
 )
 

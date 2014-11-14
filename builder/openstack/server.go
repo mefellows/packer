@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/mitchellh/multistep"
 	"github.com/racker/perigee"
-	"github.com/rackspace/gophercloud"
+	"github.com/mitchellh/gophercloud-fork-40444fb"
 	"log"
 	"time"
 )

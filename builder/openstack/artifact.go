@@ -2,7 +2,7 @@ package openstack
 
 import (
 	"fmt"
-	"github.com/rackspace/gophercloud"
+	"github.com/mitchellh/gophercloud-fork-40444fb"
 	"log"
 )
 

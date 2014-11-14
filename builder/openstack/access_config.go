@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/mitchellh/packer/common"
 	"github.com/mitchellh/packer/packer"
-	"github.com/rackspace/gophercloud"
+	"github.com/mitchellh/gophercloud-fork-40444fb"
 	"net/http"
 	"net/url"
 	"os"

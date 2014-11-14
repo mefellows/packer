@@ -5,7 +5,7 @@ import (
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/common/uuid"
 	"github.com/mitchellh/packer/packer"
-	"github.com/rackspace/gophercloud"
+	"github.com/mitchellh/gophercloud-fork-40444fb"
 	"log"
 	"os"
 	"runtime"
