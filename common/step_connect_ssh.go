@@ -4,10 +4,13 @@ import (
 	gossh "code.google.com/p/go.crypto/ssh"
 	"errors"
 	"fmt"
+	communicator "github.com/dylanmei/packer-communicator-winrm/communicator/winrm"
+	"github.com/masterzen/winrm/winrm"
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/communicator/ssh"
 	"github.com/mitchellh/packer/packer"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -42,19 +45,27 @@ type StepConnectSSH struct {
 
 func (s *StepConnectSSH) Run(state multistep.StateBag) multistep.StepAction {
 	ui := state.Get("ui").(packer.Ui)
+	//builderConfig := state.Get("config)
+	//config := state.Get("config").(*config)
 
 	var comm packer.Communicator
 	var err error
+	//communicatorType := "SSH"
+	communicatorType := "WinRM"
 
 	cancel := make(chan struct{})
 	waitDone := make(chan bool, 1)
 	go func() {
-		ui.Say("Waiting for SSH to become available...")
-		comm, err = s.waitForSSH(state, cancel)
+		ui.Say(fmt.Sprintf("Waiting for %s to become available...", communicatorType))
+		if communicatorType == "WinRM" {
+			comm, err = s.waitForWinRM(state, cancel)
+		} else {
+			comm, err = s.waitForSSH(state, cancel)
+		}
 		waitDone <- true
 	}()
 
-	log.Printf("Waiting for SSH, up to timeout: %s", s.SSHWaitTimeout)
+	log.Printf("Waiting for %s, up to timeout: %s", communicatorType, s.SSHWaitTimeout)
 	timeout := time.After(s.SSHWaitTimeout)
 WaitLoop:
 	for {
@@ -67,12 +78,12 @@ WaitLoop:
 				return multistep.ActionHalt
 			}
 
-			ui.Say("Connected to SSH!")
+			ui.Say(fmt.Sprintf("Connected to %s!", communicatorType))
 			s.comm = comm
 			state.Put("communicator", comm)
 			break WaitLoop
 		case <-timeout:
-			err := fmt.Errorf("Timeout waiting for SSH.")
+			err := fmt.Errorf("Timeout waiting for %s.", communicatorType)
 			state.Put("error", err)
 			ui.Error(err.Error())
 			close(cancel)
@@ -82,7 +93,7 @@ WaitLoop:
 				// The step sequence was cancelled, so cancel waiting for SSH
 				// and just start the halting process.
 				close(cancel)
-				log.Println("Interrupt detected, quitting waiting for SSH.")
+				log.Printf("Interrupt detected, quitting waiting for %s.", communicatorType)
 				return multistep.ActionHalt
 			}
 		}
@@ -94,6 +105,66 @@ WaitLoop:
 func (s *StepConnectSSH) Cleanup(multistep.StateBag) {
 }
 
+func (s *StepConnectSSH) waitForWinRM(state multistep.StateBag, cancel <-chan struct{}) (packer.Communicator, error) {
+	handshakeAttempts := 0
+
+	var comm packer.Communicator
+	ui := state.Get("ui").(packer.Ui)
+	first := true
+	for {
+		// Don't check for cancel or wait on first iteration
+		if !first {
+			select {
+			case <-cancel:
+				log.Println("WinRM wait cancelled. Exiting loop.")
+				return nil, errors.New("WinRM wait cancelled")
+			case <-time.After(5 * time.Second):
+			}
+		}
+		first = false
+
+		// First we request the TCP connection information
+		address, err := s.SSHAddress(state)
+		if err != nil {
+			log.Printf("Error getting WinRM address: %s", err)
+			continue
+		}
+
+		addressParts := strings.SplitN(address, ":", 2)
+		host := addressParts[0]
+		port, err := strconv.Atoi(addressParts[1])
+		endpoint := &winrm.Endpoint{host, port}
+		log.Printf("Attempting WinRM connection on host: %s, port: %s...", host, port)
+		if err != nil {
+			log.Printf("Invalid SSH Address found: %s, error: %s", address, err)
+			ui.Say(fmt.Sprintf("Invalid SSH Address found: %s. Error: ", address, err))
+			return nil, err
+		}
+		comm, err = communicator.New(endpoint, "vagrant", "vagrant", 60*time.Second)
+		if err != nil {
+			log.Printf("WinRM handshake err: %s", err)
+
+			// Only count this as an attempt if we were able to attempt
+			// to authenticate. Note this is very brittle since it depends
+			// on the string of the error... but I don't see any other way.
+			if strings.Contains(err.Error(), "authenticate") {
+				log.Printf("Detected authentication error. Increasing handshake attempts.")
+				handshakeAttempts += 1
+			}
+
+			if handshakeAttempts < 10 {
+				// Try to connect via WinRM a handful of times
+				continue
+			}
+
+			return nil, err
+		}
+
+		break
+	}
+
+	return comm, nil
+}
 func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan struct{}) (packer.Communicator, error) {
 	handshakeAttempts := 0
 

@@ -23,6 +23,7 @@ type RunConfig struct {
 	SpotPriceAutoProduct     string            `mapstructure:"spot_price_auto_product"`
 	RawSSHTimeout            string            `mapstructure:"ssh_timeout"`
 	SSHUsername              string            `mapstructure:"ssh_username"`
+	SSHPassword              string            `mapstructure:"ssh_password"`
 	SSHPrivateKeyFile        string            `mapstructure:"ssh_private_key_file"`
 	SSHPrivateIp             bool              `mapstructure:"ssh_private_ip"`
 	SSHPort                  int               `mapstructure:"ssh_port"`
