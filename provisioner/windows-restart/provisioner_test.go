@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+func init() {
+	waitForWinrmDisconnect = func(p *Provisioner) error {
+		fmt.Printf("Waiting for machine to disconnect\n")
+		return nil
+	}
+}
+
 func testConfig() map[string]interface{} {
 	return map[string]interface{}{}
 }

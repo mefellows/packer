@@ -93,23 +93,26 @@ func (p *Provisioner) Provision(ui packer.Ui, comm packer.Communicator) error {
 		return fmt.Errorf("Restart script exited with non-zero exit status: %d", cmd.ExitStatus)
 	}
 
-	return waitForRestart(p)
+	p.waitForFunction(waitForWinrmDisconnect)
+	p.cancel = make(chan struct{})
+	return p.waitForFunction(waitForCommunicator)
 }
 
-var waitForRestart = func(p *Provisioner) error {
+func (p *Provisioner) waitForFunction(waitFunc func(p *Provisioner) error) error {
+	//var waitForRestart = func(p *Provisioner) error {
 	ui := p.ui
-	ui.Say("Waiting for machine to restart...")
+	ui.Say("Waiting for machine to change state")
 	waitDone := make(chan bool, 1)
 	timeout := time.After(p.config.RestartTimeout)
 	var err error
 
 	go func() {
-		log.Printf("Waiting for machine to become available...")
-		err = waitForCommunicator(p)
+		log.Printf("Waiting for machine to change state")
+		err = waitFunc(p)
 		waitDone <- true
 	}()
 
-	log.Printf("Waiting for machine to reboot with timeout: %s", p.config.RestartTimeout)
+	log.Printf("Waiting for machine to change state with timeout: %s", p.config.RestartTimeout)
 
 WaitLoop:
 	for {
@@ -122,7 +125,7 @@ WaitLoop:
 				return err
 			}
 
-			ui.Say("Machine successfully restarted, moving on")
+			ui.Say("Machine state changed, moving on")
 			close(p.cancel)
 			break WaitLoop
 		case <-timeout:
@@ -132,13 +135,38 @@ WaitLoop:
 			return err
 		case <-p.cancel:
 			close(waitDone)
-			return fmt.Errorf("Interrupt detected, quitting waiting for machine to restart")
+			return fmt.Errorf("Interrupt detected, quitting waiting for machine to change state")
 			break WaitLoop
 		}
 	}
 
 	return nil
+}
 
+var waitForWinrmDisconnect = func(p *Provisioner) error {
+	cmd := &packer.RemoteCmd{Command: p.config.RestartCheckCommand}
+
+	for {
+		select {
+		case <-p.cancel:
+			log.Println("Communicator wait cancelled, exiting loop")
+			return fmt.Errorf("Communicator wait cancelled")
+		case <-time.After(retryableSleep):
+		}
+
+		log.Printf("Waiting for WinRM to shutdown: '%s'", cmd.Command)
+
+		err := cmd.StartWithUi(p.comm, p.ui)
+		if err == nil {
+			log.Printf("Connection still active...")
+			continue
+		}
+
+		log.Printf("WinRM disconnected")
+		break
+	}
+
+	return nil
 }
 
 var waitForCommunicator = func(p *Provisioner) error {
